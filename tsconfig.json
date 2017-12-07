@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "moduleResolution": "node",
+        "skipLibCheck": true,
+        "module": "es2015",
+        "target": "es5",
+        "lib": [
+            "es5",
+            "es6",
+            "dom"
+        ],
+        "types": [
+            "systemjs"
+        ]
+    },
+    "include": [
+        "src"
+    ]
+}
