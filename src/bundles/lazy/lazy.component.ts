@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, HostBinding, Input } from '@angular/core';
 
 @Component({
   selector: 'lz-lazy',
@@ -6,4 +6,8 @@ import { Component, Input } from '@angular/core';
 })
 export class LazyComponent {
   @Input() public name: string;
+
+  @HostBinding('style.color')
+  @Input()
+  public color: string;
 }

@@ -1,5 +1,6 @@
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   ComponentRef,
   ElementRef,
@@ -14,6 +15,8 @@ import {
   SimpleChanges,
   ViewContainerRef,
 } from '@angular/core';
+import { Observable, Subscription } from 'rxjs';
+
 import { DynamicCompilerService } from './dynamic-compiler.service';
 
 /**
@@ -33,7 +36,7 @@ import { DynamicCompilerService } from './dynamic-compiler.service';
  *   [bundle]="bundle"
  *   component="LazyModule#LazyComponent"
  *   [inputs]="{ foo: 'bar' }">
- * </b-dynamic-loader>
+ * </lz-dynamic-loader>
  * ```
  */
 @Component({
@@ -63,6 +66,13 @@ export class DynamicLoaderComponent implements OnChanges, OnInit, OnDestroy {
   @Input() public inputs: { [key: string]: any } = {};
 
   /**
+   * If true, Observable instances in the input will be subscribed to and
+   * their emissions passed in as input to the component. This is equivalent
+   * to an automatic application of the Angular `| async` pipe.
+   */
+  @Input() public unwrapObservables = true;
+
+  /**
    * Fired when the component loads in.
    */
   @Output() public loaded = new EventEmitter<void>();
@@ -70,6 +80,7 @@ export class DynamicLoaderComponent implements OnChanges, OnInit, OnDestroy {
   private modRef: NgModuleRef<any>;
   private compRef: ComponentRef<any>;
   private destroyed = false;
+  private subscriptions: { [input: string]: Subscription } = Object.create(null);
 
   constructor(
     private readonly compiler: DynamicCompilerService,
@@ -91,7 +102,7 @@ export class DynamicLoaderComponent implements OnChanges, OnInit, OnDestroy {
 
         const element = (<EmbeddedViewRef<any>>this.compRef.hostView).rootNodes[0];
         this.element.nativeElement.appendChild(element);
-        Object.assign(this.compRef.instance, this.inputs);
+        this.setInputs(this.inputs);
         this.loaded.emit();
       })
       .catch(err => {
@@ -99,14 +110,47 @@ export class DynamicLoaderComponent implements OnChanges, OnInit, OnDestroy {
       });
   }
 
+  /**
+   * setInputs updates the component's inputs to the set of data. Any
+   * observables provided in the set of changes are subscribed to when
+   * passed to the child.
+   */
+  private setInputs(next: any, previous: any = {}) {
+    const cdRef: ChangeDetectorRef = this.compRef.injector.get(ChangeDetectorRef);
+    const cls: any = this.compRef.instance;
+
+    Object.keys(next).forEach(key => {
+      const value = next[key];
+      if (value === previous[key]) {
+        return;
+      }
+
+      if (this.subscriptions[key] instanceof Observable) {
+        this.subscriptions[key].unsubscribe();
+        delete this.subscriptions[key];
+      }
+
+      if (!this.unwrapObservables || !(value instanceof Observable)) {
+        cls[key] = value;
+        return;
+      }
+
+      cls[key] = null; // For partity with the async pipe, which is null initially.
+      this.subscriptions[key] = value.subscribe(data => {
+        cls[key] = data;
+        cdRef.markForCheck();
+        cdRef.detectChanges();
+      });
+    });
+
+    cdRef.markForCheck();
+    cdRef.detectChanges();
+  }
+
   public ngOnChanges(changes: SimpleChanges) {
     if (changes.inputs && this.compRef) {
-      Object.assign(this.compRef.instance, changes.inputs.currentValue);
+      this.setInputs(changes.inputs.currentValue, changes.inputs.previousValue);
     }
-
-    // Homework assignment: look for rxjs observables in the input,
-    // unwrap them automatically, updating the target and triggering
-    // change detection when they emit!
   }
 
   public ngOnDestroy() {
